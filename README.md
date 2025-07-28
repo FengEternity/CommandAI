@@ -172,19 +172,27 @@ cp custom-prompt-example.ini ~/.config/command-ai/config.ini
    ./install.sh
    ```
 
-2. **配置 API Key**
+2. 修改 zsh 配置文件
+   ```bash
+   # 编辑配置文件
+   nano ~/.zshrc
+   # 添加 command-ai 到 plugins 列表中
+   plugins=(git command-ai)
+   ```
+
+3. **配置 API Key**
    ```bash
    # 编辑配置文件
    nano ~/.config/command-ai/config.ini
    # 设置你的 API Key
    ```
 
-3. **重新加载 Shell**
+4. **重新加载 Shell**
    ```bash
    source ~/.zshrc
    ```
 
-4. **开始使用**
+5. **开始使用**
    ```bash
    ai help                    # 查看帮助
    ai 列出所有 txt 文件        # 自然语言转命令

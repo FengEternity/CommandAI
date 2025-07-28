@@ -6,6 +6,11 @@
 echo "🧪 CommandAI 快速测试"
 echo "==================="
 
+# 获取项目根目录（脚本在 scripts/ 子目录中）
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../" && pwd)"
+echo "📁 项目目录: $PROJECT_DIR"
+echo
+
 # 测试计数器
 PASS=0
 FAIL=0
@@ -38,7 +43,18 @@ required_files=(
 )
 
 for file in "${required_files[@]}"; do
-    if [[ -f "$file" ]]; then
+    # 对于 install.sh，在 scripts 目录中查找
+    if [[ "$file" == "install.sh" ]]; then
+        file_path="$PROJECT_DIR/scripts/$file"
+    # 对于 config.example.ini，在 config 目录中查找
+    elif [[ "$file" == "config.example.ini" ]]; then
+        file_path="$PROJECT_DIR/config/$file"
+    # 其他文件在项目根目录中查找
+    else
+        file_path="$PROJECT_DIR/$file"
+    fi
+    
+    if [[ -f "$file_path" ]]; then
         test_pass "文件存在: $file"
     else
         test_fail "文件缺失: $file"
@@ -51,11 +67,18 @@ echo "🔐 检查脚本权限..."
 executable_files=(
     "bin/command-ai-helper"
     "install.sh"
-    "demo.sh"
 )
 
 for file in "${executable_files[@]}"; do
-    if [[ -x "$file" ]]; then
+    # 对于 install.sh和demo.sh，在 scripts 目录中查找
+    if [[ "$file" == "install.sh" || "$file" == "demo.sh" ]]; then
+        file_path="$PROJECT_DIR/scripts/$file"
+    # 其他文件在项目根目录中查找
+    else
+        file_path="$PROJECT_DIR/$file"
+    fi
+    
+    if [[ -x "$file_path" ]]; then
         test_pass "可执行: $file"
     else
         test_fail "不可执行: $file"
@@ -66,13 +89,13 @@ done
 echo
 echo "🐍 检查 Python 脚本..."
 if command -v python3 &> /dev/null; then
-    if python3 -m py_compile bin/command-ai-helper 2>/dev/null; then
+    if python3 -m py_compile "$PROJECT_DIR/bin/command-ai-helper" 2>/dev/null; then
         test_pass "Python 脚本语法正确"
     else
         test_fail "Python 脚本语法错误"
     fi
     
-    if python3 bin/command-ai-helper --help &>/dev/null; then
+    if python3 "$PROJECT_DIR/bin/command-ai-helper" --help &>/dev/null; then
         test_pass "Python 脚本可以运行"
     else
         test_fail "Python 脚本无法运行"
@@ -96,7 +119,8 @@ if command -v zsh &> /dev/null; then
     )
     
     for file in "${zsh_files[@]}"; do
-        if zsh -n "$file" 2>/dev/null; then
+        file_path="$PROJECT_DIR/$file"
+        if zsh -n "$file_path" 2>/dev/null; then
             test_pass "Zsh 语法正确: $file"
         else
             test_fail "Zsh 语法错误: $file"
@@ -113,7 +137,7 @@ if command -v python3 &> /dev/null; then
     if python3 -c "
 import configparser
 config = configparser.ConfigParser()
-config.read('config.example.ini')
+config.read('$PROJECT_DIR/config/config.example.ini')
 print('配置文件格式正确')
 " &>/dev/null; then
         test_pass "配置文件格式正确"
@@ -127,7 +151,7 @@ fi
 # 6. 检查缓存功能
 echo
 echo "💾 检查缓存功能..."
-if python3 bin/command-ai-helper cache --cache-action stats &>/dev/null; then
+if python3 "$PROJECT_DIR/bin/command-ai-helper" cache --cache-action stats &>/dev/null; then
     test_pass "缓存功能可用"
 else
     test_fail "缓存功能不可用"
@@ -136,7 +160,7 @@ fi
 # 7. 检查安装脚本
 echo
 echo "📦 检查安装脚本..."
-if bash -n install.sh 2>/dev/null; then
+if bash -n "$PROJECT_DIR/scripts/install.sh" 2>/dev/null; then
     test_pass "安装脚本语法正确"
 else
     test_fail "安装脚本语法错误"

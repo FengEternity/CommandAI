@@ -17,19 +17,23 @@ COMMAND_AI_CACHE_DIR="${COMMAND_AI_CACHE_DIR:-$HOME/.cache/command-ai}"
 [[ ! -d "$(dirname "$COMMAND_AI_CONFIG")" ]] && mkdir -p "$(dirname "$COMMAND_AI_CONFIG")"
 [[ ! -d "$COMMAND_AI_CACHE_DIR" ]] && mkdir -p "$COMMAND_AI_CACHE_DIR"
 
-# 如果配置文件不存在，复制示例配置
+# 如果配置文件不存在，提示用户创建
 if [[ ! -f "$COMMAND_AI_CONFIG" ]]; then
-    if [[ -f "$COMMAND_AI_PLUGIN_DIR/config.example.ini" ]]; then
-        cp "$COMMAND_AI_PLUGIN_DIR/config.example.ini" "$COMMAND_AI_CONFIG"
-        echo "CommandAI: 配置文件已创建在 $COMMAND_AI_CONFIG"
-        echo "请编辑配置文件设置您的 API Key"
-    fi
+    echo "CommandAI: 配置文件不存在，请运行安装脚本或手动创建 $COMMAND_AI_CONFIG"
 fi
 
 # 加载所有模块
-for module in "$COMMAND_AI_PLUGIN_DIR/modules"/*.zsh; do
-    [[ -r "$module" ]] && source "$module"
-done
+if [[ -d "$COMMAND_AI_PLUGIN_DIR/modules" ]]; then
+    for module in "$COMMAND_AI_PLUGIN_DIR/modules"/*.zsh; do
+        if [[ -r "$module" ]]; then
+            if ! source "$module" 2>/dev/null; then
+                echo "CommandAI: 警告 - 模块加载失败: $(basename "$module")"
+            fi
+        fi
+    done
+else
+    echo "CommandAI: 警告 - 模块目录不存在: $COMMAND_AI_PLUGIN_DIR/modules"
+fi
 
 # 设置补全路径
 fpath=("$COMMAND_AI_PLUGIN_DIR/completions" $fpath)
@@ -38,13 +42,17 @@ fpath=("$COMMAND_AI_PLUGIN_DIR/completions" $fpath)
 autoload -Uz compinit
 compinit
 
-# 绑定快捷键
-bindkey '^I' command_ai_smart_completion  # Tab 键
-bindkey '^@' command_ai_smart_completion  # Ctrl+Space
+# 绑定快捷键（默认禁用以避免冲突）
+# bindkey '^I' command_ai_smart_completion  # Tab 键
+# bindkey '^@' command_ai_smart_completion  # Ctrl+Space
 
 # 设置钩子
-autoload -Uz add-zsh-hook
-add-zsh-hook precmd command_ai_precmd_hook
+if (( $+functions[command_ai_precmd_hook] )); then
+    autoload -Uz add-zsh-hook
+    add-zsh-hook precmd command_ai_precmd_hook
+else
+    echo "CommandAI: 警告 - precmd 钩子函数不存在"
+fi
 
 # 定义主要命令
 ai() {
@@ -85,9 +93,9 @@ command_ai_nl_prefix() {
     fi
 }
 
-# 绑定自然语言前缀处理
-zle -N command_ai_nl_prefix
-bindkey '^M' command_ai_nl_prefix  # Enter 键
+# 绑定自然语言前缀处理（默认禁用以避免冲突）
+# zle -N command_ai_nl_prefix
+# bindkey '^M' command_ai_nl_prefix  # Enter 键
 
 # 显示帮助信息
 command_ai_show_help() {

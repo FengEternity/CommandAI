@@ -191,8 +191,8 @@ install_plugin_files() {
     # 创建安装目录
     mkdir -p "$INSTALL_DIR"
     
-    # 获取脚本所在目录
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    # 获取项目根目录（脚本在 scripts/ 子目录中）
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../" && pwd)"
     
     # 复制插件文件
     if [ -f "$SCRIPT_DIR/command-ai.plugin.zsh" ]; then
@@ -243,11 +243,11 @@ install_config_files() {
     mkdir -p "$CACHE_DIR"
     
     # 复制配置文件模板
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../" && pwd)"
     
-    if [ -f "$SCRIPT_DIR/config.example.ini" ]; then
+    if [ -f "$SCRIPT_DIR/config/config.example.ini" ]; then
         if [ ! -f "$CONFIG_DIR/config.ini" ]; then
-            cp "$SCRIPT_DIR/config.example.ini" "$CONFIG_DIR/config.ini"
+            cp "$SCRIPT_DIR/config/config.example.ini" "$CONFIG_DIR/config.ini"
             print_success "已创建配置文件: $CONFIG_DIR/config.ini"
         else
             print_warning "配置文件已存在，跳过创建"
@@ -255,6 +255,14 @@ install_config_files() {
     else
         print_error "找不到配置文件模板"
         exit 1
+    fi
+    
+    # 复制自定义 prompt 示例文件
+    if [ -f "$SCRIPT_DIR/config/custom-prompt-example.ini" ]; then
+        if [ ! -f "$CONFIG_DIR/custom-prompt-example.ini" ]; then
+            cp "$SCRIPT_DIR/config/custom-prompt-example.ini" "$CONFIG_DIR/custom-prompt-example.ini"
+            print_success "已复制自定义 prompt 示例文件"
+        fi
     fi
     
     # 创建黑名单文件
@@ -412,6 +420,7 @@ show_post_install_info() {
     echo
     print_info "配置文件位置:"
     print_info "  配置: $CONFIG_DIR/config.ini"
+    print_info "  自定义 Prompt: $CONFIG_DIR/custom-prompt-example.ini"
     print_info "  黑名单: $CONFIG_DIR/blacklist.txt"
     print_info "  缓存: $CACHE_DIR"
     

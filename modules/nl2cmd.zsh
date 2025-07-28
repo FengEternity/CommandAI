@@ -72,11 +72,11 @@ command_ai_present_generated_command() {
         print -P "%F{yellow}请仔细确认后再执行！%f"
         
         echo
-        print -P "%F{cyan}请选择操作:%f"
-        print -P "  %F{green}1%f) 执行命令"
-        print -P "  %F{yellow}2%f) 编辑命令"
-        print -P "  %F{blue}3%f) 显示详细说明"
-        print -P "  %F{red}4%f) 取消"
+        echo "请选择操作:"
+        echo "  1) 执行命令"
+        echo "  2) 编辑命令"
+        echo "  3) 显示详细说明"
+        echo "  4) 取消"
         
         read -k1 "choice?请输入选择 (1-4): "
         echo
@@ -109,11 +109,11 @@ command_ai_present_generated_command() {
         print -P "%F{cyan}生成命令: $generated_cmd%f"
         
         echo
-        print -P "%F{cyan}请选择操作:%f"
-        print -P "  %F{green}1%f) 执行命令"
-        print -P "  %F{yellow}2%f) 编辑命令"
-        print -P "  %F{blue}3%f) 显示详细说明"
-        print -P "  %F{red}4%f) 取消"
+        echo "请选择操作:"
+        echo "  1) 执行命令"
+        echo "  2) 编辑命令"
+        echo "  3) 显示详细说明"
+        echo "  4) 取消"
         
         read -k1 "choice?请输入选择 (1-4): "
         echo
