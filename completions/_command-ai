@@ -1,0 +1,316 @@
+#compdef ai
+
+# CommandAI Zsh 补全脚本
+# 为 ai 命令提供智能补全
+
+_command_ai() {
+    local context state state_descr line
+    local -A opt_args
+    
+    _arguments -C \
+        '1: :_command_ai_commands' \
+        '*::arg:->args' && return 0
+    
+    case $state in
+        args)
+            case $words[1] in
+                fix)
+                    _command_ai_fix_completion
+                    ;;
+                feedback)
+                    _command_ai_feedback_completion
+                    ;;
+                config)
+                    _command_ai_config_completion
+                    ;;
+                cache)
+                    _command_ai_cache_completion
+                    ;;
+                completion)
+                    _command_ai_completion_config_completion
+                    ;;
+                nl2cmd)
+                    _command_ai_nl2cmd_config_completion
+                    ;;
+                security)
+                    _command_ai_security_config_completion
+                    ;;
+                *)
+                    # 对于其他情况，提供自然语言提示
+                    _message "输入自然语言描述，如：列出当前目录下的所有 .txt 文件"
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+# 主命令补全
+_command_ai_commands() {
+    local -a commands
+    commands=(
+        'fix:修复上一个或指定的命令'
+        'feedback:对 AI 建议提供反馈'
+        'config:打开或管理配置'
+        'cache:管理缓存'
+        'completion:配置智能补全'
+        'nl2cmd:配置自然语言转命令'
+        'security:配置安全设置'
+        'help:显示帮助信息'
+    )
+    
+    _describe -t commands 'CommandAI 命令' commands
+}
+
+# fix 命令补全
+_command_ai_fix_completion() {
+    # 提供历史命令作为补全选项
+    local -a history_commands
+    
+    # 获取最近的失败命令（简化实现）
+    if [[ -n "$COMMAND_AI_LAST_COMMAND" ]]; then
+        history_commands+=("$COMMAND_AI_LAST_COMMAND:最后失败的命令")
+    fi
+    
+    # 从历史记录中获取最近的命令
+    local recent_commands=($(fc -ln -10 | sed 's/^[[:space:]]*//' | grep -v '^ai '))
+    for cmd in "${recent_commands[@]}"; do
+        [[ -n "$cmd" ]] && history_commands+=("$cmd:历史命令")
+    done
+    
+    if [[ ${#history_commands[@]} -gt 0 ]]; then
+        _describe -t history 'Recent Commands' history_commands
+    else
+        _message "输入要修复的命令，或留空修复最后失败的命令"
+    fi
+}
+
+# feedback 命令补全
+_command_ai_feedback_completion() {
+    local -a feedback_options
+    feedback_options=(
+        'good:标记为好的建议'
+        'bad:标记为坏的建议'
+        'show:显示最近的反馈记录'
+    )
+    
+    _describe -t feedback 'Feedback Options' feedback_options
+}
+
+# config 命令补全
+_command_ai_config_completion() {
+    local -a config_options
+    config_options=(
+        'edit:编辑配置文件'
+        'show:显示当前配置'
+        'reset:重置为默认配置'
+        'validate:验证配置有效性'
+    )
+    
+    _describe -t config 'Config Options' config_options
+}
+
+# cache 命令补全
+_command_ai_cache_completion() {
+    case $CURRENT in
+        2)
+            local -a cache_commands
+            cache_commands=(
+                'clear:清空缓存'
+                'stats:显示缓存统计'
+                'optimize:优化缓存'
+                'export:导出缓存'
+                'import:导入缓存'
+                'config:配置缓存设置'
+            )
+            _describe -t cache_commands 'Cache Commands' cache_commands
+            ;;
+        3)
+            case $words[2] in
+                clear)
+                    local -a clear_types
+                    clear_types=(
+                        'all:清空所有缓存'
+                        'commands:清空命令缓存'
+                        'feedback:清空反馈缓存'
+                        'old:清空过期缓存'
+                    )
+                    _describe -t clear_types 'Clear Types' clear_types
+                    ;;
+                export)
+                    _files -g "*.json"
+                    ;;
+                import)
+                    _files -g "*.json"
+                    ;;
+                config)
+                    local -a config_options
+                    config_options=(
+                        'enable:启用缓存'
+                        'disable:禁用缓存'
+                        'max-size:设置最大缓存大小'
+                        'ttl:设置缓存生存时间'
+                        'status:显示缓存状态'
+                    )
+                    _describe -t config_options 'Cache Config Options' config_options
+                    ;;
+            esac
+            ;;
+        4)
+            case "$words[2]:$words[3]" in
+                config:max-size)
+                    _message "输入最大缓存条目数 (默认: 1000)"
+                    ;;
+                config:ttl)
+                    _message "输入缓存生存时间（秒）(默认: 86400)"
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+# completion 配置补全
+_command_ai_completion_config_completion() {
+    case $CURRENT in
+        2)
+            local -a completion_options
+            completion_options=(
+                'enable:启用智能补全'
+                'disable:禁用智能补全'
+                'timeout:设置补全超时时间'
+                'status:显示补全状态'
+            )
+            _describe -t completion_options 'Completion Options' completion_options
+            ;;
+        3)
+            case $words[2] in
+                timeout)
+                    _message "输入超时时间（秒）(默认: 5)"
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+# nl2cmd 配置补全
+_command_ai_nl2cmd_config_completion() {
+    case $CURRENT in
+        2)
+            local -a nl2cmd_options
+            nl2cmd_options=(
+                'enable:启用自然语言转命令'
+                'disable:禁用自然语言转命令'
+                'prefix:设置自然语言前缀'
+                'status:显示状态'
+            )
+            _describe -t nl2cmd_options 'NL2CMD Options' nl2cmd_options
+            ;;
+        3)
+            case $words[2] in
+                prefix)
+                    local -a prefix_suggestions
+                    prefix_suggestions=(
+                        '#:井号前缀'
+                        '@:at符号前缀'
+                        '!:感叹号前缀'
+                        'ai:ai关键字前缀'
+                    )
+                    _describe -t prefix_suggestions 'Prefix Suggestions' prefix_suggestions
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+# security 配置补全
+_command_ai_security_config_completion() {
+    case $CURRENT in
+        2)
+            local -a security_options
+            security_options=(
+                'enable:启用安全检查'
+                'disable:禁用安全检查'
+                'confirmation:配置危险命令确认'
+                'blacklist:管理黑名单'
+                'status:显示安全状态'
+            )
+            _describe -t security_options 'Security Options' security_options
+            ;;
+        3)
+            case $words[2] in
+                confirmation)
+                    local -a confirmation_options
+                    confirmation_options=(
+                        'on:启用危险命令确认'
+                        'off:禁用危险命令确认'
+                    )
+                    _describe -t confirmation_options 'Confirmation Options' confirmation_options
+                    ;;
+                blacklist)
+                    local -a blacklist_options
+                    blacklist_options=(
+                        'add:添加到黑名单'
+                        'remove:从黑名单移除'
+                        'show:显示黑名单'
+                    )
+                    _describe -t blacklist_options 'Blacklist Options' blacklist_options
+                    ;;
+            esac
+            ;;
+        4)
+            case "$words[2]:$words[3]" in
+                blacklist:add)
+                    _message "输入要添加到黑名单的命令模式"
+                    ;;
+                blacklist:remove)
+                    # 这里可以从实际的黑名单文件中读取现有模式
+                    _message "输入要从黑名单移除的命令模式"
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+# 智能补全建议
+_command_ai_smart_suggestions() {
+    local current_input="$words[CURRENT]"
+    local context=""
+    
+    # 获取当前上下文
+    if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        context+="git "
+    fi
+    
+    # 根据当前目录内容提供建议
+    local -a suggestions
+    
+    # 如果在 Git 仓库中
+    if [[ -n "$context" ]]; then
+        suggestions+=(
+            "提交所有更改:git add . && git commit -m"
+            "查看状态:git status"
+            "查看日志:git log --oneline"
+            "创建新分支:git checkout -b"
+        )
+    fi
+    
+    # 通用文件操作建议
+    suggestions+=(
+        "列出文件:ls -la"
+        "查找文件:find . -name"
+        "搜索内容:grep -r"
+        "查看磁盘使用:df -h"
+        "查看进程:ps aux"
+    )
+    
+    _describe -t suggestions 'Smart Suggestions' suggestions
+}
+
+# 动态补全加载
+_command_ai_dynamic_completion() {
+    # 这里可以调用 AI 服务获取动态补全建议
+    # 为了性能考虑，这里提供静态建议
+    _command_ai_smart_suggestions
+}
+
+# 注册补全函数
+_command_ai "$@"

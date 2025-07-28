@@ -1,0 +1,381 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+CommandAI Helper - 核心辅助脚本
+负责与 AI API 通信、解析数据和管理配置
+"""
+
+import os
+import sys
+import json
+import hashlib
+import sqlite3
+import configparser
+import requests
+import argparse
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+import time
+
+class CommandAIHelper:
+    def __init__(self):
+        self.config_path = os.environ.get('COMMAND_AI_CONFIG', 
+                                        os.path.expanduser('~/.config/command-ai/config.ini'))
+        self.cache_dir = os.environ.get('COMMAND_AI_CACHE_DIR',
+                                      os.path.expanduser('~/.cache/command-ai'))
+        self.cache_db = os.path.join(self.cache_dir, 'cache.db')
+        
+        # 确保目录存在
+        os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
+        os.makedirs(self.cache_dir, exist_ok=True)
+        
+        self.config = self._load_config()
+        self._init_cache_db()
+        
+        # 危险命令模式
+        self.dangerous_patterns = [
+            'rm -rf', 'rm -r', 'dd if=', 'mkfs', 'fdisk', 'parted',
+            'chmod 777', 'chown -R', 'sudo rm', 'curl.*|.*sh',
+            'wget.*|.*sh', '> /dev/', 'format', 'del /s', 'rmdir /s'
+        ]
+
+    def _load_config(self) -> configparser.ConfigParser:
+        """加载配置文件"""
+        config = configparser.ConfigParser()
+        if os.path.exists(self.config_path):
+            config.read(self.config_path)
+        return config
+
+    def _init_cache_db(self):
+        """初始化缓存数据库"""
+        conn = sqlite3.connect(self.cache_db)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS command_cache (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                query_hash TEXT UNIQUE,
+                query TEXT,
+                command TEXT,
+                context TEXT,
+                success_count INTEGER DEFAULT 0,
+                failure_count INTEGER DEFAULT 0,
+                last_used TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                query_hash TEXT,
+                command TEXT,
+                feedback TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        conn.commit()
+        conn.close()
+
+    def _get_query_hash(self, query: str, context: str = "") -> str:
+        """生成查询的哈希值"""
+        content = f"{query}:{context}"
+        return hashlib.md5(content.encode()).hexdigest()
+
+    def _call_ai_api(self, prompt: str, system_prompt: str = "") -> Optional[str]:
+        """调用 AI API"""
+        try:
+            api_key = self.config.get('api', 'key', fallback='')
+            api_url = self.config.get('api', 'url', fallback='https://api.openai.com/v1/chat/completions')
+            model = self.config.get('api', 'model', fallback='gpt-3.5-turbo')
+            
+            if not api_key:
+                print("错误: 未配置 API Key", file=sys.stderr)
+                return None
+            
+            headers = {
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json'
+            }
+            
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
+            
+            data = {
+                'model': model,
+                'messages': messages,
+                'temperature': 0.1,
+                'max_tokens': 500
+            }
+            
+            response = requests.post(api_url, headers=headers, json=data, timeout=30)
+            response.raise_for_status()
+            
+            result = response.json()
+            return result['choices'][0]['message']['content'].strip()
+            
+        except Exception as e:
+            print(f"API 调用失败: {e}", file=sys.stderr)
+            return None
+
+    def get_cached_command(self, query: str, context: str = "") -> Optional[str]:
+        """从缓存获取命令"""
+        query_hash = self._get_query_hash(query, context)
+        
+        conn = sqlite3.connect(self.cache_db)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT command FROM command_cache 
+            WHERE query_hash = ? AND success_count > failure_count
+            ORDER BY success_count DESC, last_used DESC
+            LIMIT 1
+        ''', (query_hash,))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if result:
+            # 更新最后使用时间
+            self._update_cache_usage(query_hash)
+            return result[0]
+        
+        return None
+
+    def cache_command(self, query: str, command: str, context: str = ""):
+        """缓存命令"""
+        query_hash = self._get_query_hash(query, context)
+        
+        conn = sqlite3.connect(self.cache_db)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT OR REPLACE INTO command_cache 
+            (query_hash, query, command, context, success_count, last_used)
+            VALUES (?, ?, ?, ?, 
+                    COALESCE((SELECT success_count FROM command_cache WHERE query_hash = ?), 0),
+                    CURRENT_TIMESTAMP)
+        ''', (query_hash, query, command, context, query_hash))
+        
+        conn.commit()
+        conn.close()
+
+    def _update_cache_usage(self, query_hash: str):
+        """更新缓存使用时间"""
+        conn = sqlite3.connect(self.cache_db)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE command_cache 
+            SET last_used = CURRENT_TIMESTAMP 
+            WHERE query_hash = ?
+        ''', (query_hash,))
+        
+        conn.commit()
+        conn.close()
+
+    def update_feedback(self, query: str, command: str, feedback: str, context: str = ""):
+        """更新反馈"""
+        query_hash = self._get_query_hash(query, context)
+        
+        conn = sqlite3.connect(self.cache_db)
+        cursor = conn.cursor()
+        
+        # 记录反馈
+        cursor.execute('''
+            INSERT INTO feedback (query_hash, command, feedback)
+            VALUES (?, ?, ?)
+        ''', (query_hash, command, feedback))
+        
+        # 更新缓存统计
+        if feedback == 'good':
+            cursor.execute('''
+                UPDATE command_cache 
+                SET success_count = success_count + 1 
+                WHERE query_hash = ?
+            ''', (query_hash,))
+        elif feedback == 'bad':
+            cursor.execute('''
+                UPDATE command_cache 
+                SET failure_count = failure_count + 1 
+                WHERE query_hash = ?
+            ''', (query_hash,))
+        
+        conn.commit()
+        conn.close()
+
+    def is_dangerous_command(self, command: str) -> bool:
+        """检查命令是否危险"""
+        command_lower = command.lower()
+        for pattern in self.dangerous_patterns:
+            if pattern.lower() in command_lower:
+                return True
+        return False
+
+    def correct_command(self, failed_command: str, error_output: str = "", context: str = "") -> Optional[str]:
+        """纠错命令"""
+        # 先检查缓存
+        cached = self.get_cached_command(f"fix:{failed_command}", context)
+        if cached:
+            return cached
+        
+        # 从配置文件读取自定义 prompt，如果没有则使用默认值
+        system_prompt = self.config.get('prompts', 'correction_system_prompt', fallback="""你是一个专业的命令行助手。用户会提供一个执行失败的命令和错误信息，请分析并提供正确的命令。
+
+规则:
+1. 只返回修正后的命令，不要解释
+2. 如果命令涉及危险操作(删除文件、修改权限等)，在命令前加上 [DANGER] 标签
+3. 优先使用安全的参数，如 --dry-run
+4. 保持命令的原始意图""")
+
+        prompt = f"""失败的命令: {failed_command}
+错误信息: {error_output}
+当前上下文: {context}
+
+请提供修正后的命令:"""
+
+        corrected = self._call_ai_api(prompt, system_prompt)
+        if corrected:
+            # 缓存结果
+            self.cache_command(f"fix:{failed_command}", corrected, context)
+        
+        return corrected
+
+    def translate_natural_language(self, nl_query: str, context: str = "") -> Optional[str]:
+        """将自然语言转换为命令"""
+        # 先检查缓存
+        cached = self.get_cached_command(nl_query, context)
+        if cached:
+            return cached
+        
+        # 从配置文件读取自定义 prompt，如果没有则使用默认值
+        system_prompt = self.config.get('prompts', 'translation_system_prompt', fallback="""你是一个专业的命令行助手。将用户的自然语言描述转换为对应的 shell 命令。
+
+规则:
+1. 只返回命令，不要解释
+2. 如果命令涉及危险操作，在命令前加上 [DANGER] 标签
+3. 优先使用安全参数，如 --dry-run
+4. 使用常见的 Unix/Linux 命令
+5. 考虑跨平台兼容性""")
+
+        prompt = f"""自然语言描述: {nl_query}
+当前上下文: {context}
+
+请提供对应的命令:"""
+
+        command = self._call_ai_api(prompt, system_prompt)
+        if command:
+            # 缓存结果
+            self.cache_command(nl_query, command, context)
+        
+        return command
+
+    def get_completions(self, current_input: str, context: str = "") -> List[Dict[str, str]]:
+        """获取智能补全建议"""
+        # 从配置文件读取自定义 prompt，如果没有则使用默认值
+        system_prompt = self.config.get('prompts', 'completion_system_prompt', fallback="""你是一个命令行补全助手。根据用户当前的输入和上下文，提供相关的补全建议。
+
+返回格式为 JSON 数组，每个元素包含:
+- "completion": 补全内容
+- "description": 简短描述
+
+规则:
+1. 最多返回 10 个建议
+2. 按相关性排序
+3. 包含参数、选项、文件名等
+4. 描述要简洁明了""")
+
+        prompt = f"""当前输入: {current_input}
+上下文: {context}
+
+请提供补全建议:"""
+
+        result = self._call_ai_api(prompt, system_prompt)
+        if result:
+            try:
+                return json.loads(result)
+            except json.JSONDecodeError:
+                pass
+        
+        return []
+
+    def clear_cache(self):
+        """清空缓存"""
+        conn = sqlite3.connect(self.cache_db)
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM command_cache')
+        cursor.execute('DELETE FROM feedback')
+        conn.commit()
+        conn.close()
+
+    def get_cache_stats(self) -> Dict:
+        """获取缓存统计"""
+        conn = sqlite3.connect(self.cache_db)
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT COUNT(*) FROM command_cache')
+        cache_count = cursor.fetchone()[0]
+        
+        cursor.execute('SELECT COUNT(*) FROM feedback')
+        feedback_count = cursor.fetchone()[0]
+        
+        cursor.execute('SELECT SUM(success_count) FROM command_cache')
+        success_total = cursor.fetchone()[0] or 0
+        
+        cursor.execute('SELECT SUM(failure_count) FROM command_cache')
+        failure_total = cursor.fetchone()[0] or 0
+        
+        conn.close()
+        
+        return {
+            'cache_entries': cache_count,
+            'feedback_entries': feedback_count,
+            'success_total': success_total,
+            'failure_total': failure_total
+        }
+
+def main():
+    parser = argparse.ArgumentParser(description='CommandAI Helper')
+    parser.add_argument('action', choices=['correct', 'translate', 'complete', 'feedback', 'cache'])
+    parser.add_argument('--query', help='查询内容')
+    parser.add_argument('--command', help='命令内容')
+    parser.add_argument('--error', help='错误信息')
+    parser.add_argument('--context', help='上下文信息', default='')
+    parser.add_argument('--feedback-type', choices=['good', 'bad'], help='反馈类型')
+    parser.add_argument('--cache-action', choices=['clear', 'stats'], help='缓存操作')
+    
+    args = parser.parse_args()
+    helper = CommandAIHelper()
+    
+    if args.action == 'correct':
+        result = helper.correct_command(args.query, args.error or '', args.context)
+        if result:
+            print(result)
+    
+    elif args.action == 'translate':
+        result = helper.translate_natural_language(args.query, args.context)
+        if result:
+            print(result)
+    
+    elif args.action == 'complete':
+        results = helper.get_completions(args.query, args.context)
+        print(json.dumps(results))
+    
+    elif args.action == 'feedback':
+        helper.update_feedback(args.query, args.command, args.feedback_type, args.context)
+        print("反馈已记录")
+    
+    elif args.action == 'cache':
+        if args.cache_action == 'clear':
+            helper.clear_cache()
+            print("缓存已清空")
+        elif args.cache_action == 'stats':
+            stats = helper.get_cache_stats()
+            print(json.dumps(stats, indent=2))
+
+if __name__ == '__main__':
+    main()
