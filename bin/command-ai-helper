@@ -18,6 +18,10 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import time
 
+# 导入 Markdown prompt 解析器
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from prompt_parser import MarkdownPromptParser
+
 class CommandAIHelper:
     def __init__(self):
         self.config_path = os.environ.get('COMMAND_AI_CONFIG', 
@@ -26,11 +30,17 @@ class CommandAIHelper:
                                       os.path.expanduser('~/.cache/command-ai'))
         self.cache_db = os.path.join(self.cache_dir, 'cache.db')
         
+        # Markdown prompt 配置路径
+        self.markdown_prompts_path = os.path.join(
+            os.path.dirname(self.config_path), 'custom-prompts.md'
+        )
+        
         # 确保目录存在
         os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
         os.makedirs(self.cache_dir, exist_ok=True)
         
         self.config = self._load_config()
+        self.markdown_prompts = MarkdownPromptParser(self.markdown_prompts_path)
         self._init_cache_db()
         
         # 危险命令模式
@@ -223,14 +233,20 @@ class CommandAIHelper:
         if cached:
             return cached
         
-        # 从配置文件读取自定义 prompt，如果没有则使用默认值
-        system_prompt = self.config.get('prompts', 'correction_system_prompt', fallback="""你是一个专业的命令行助手。用户会提供一个执行失败的命令和错误信息，请分析并提供正确的命令。
+        # 优先从 Markdown 配置读取 prompt，然后回退到 INI 配置
+        default_prompt = """你是一个专业的命令行助手。用户会提供一个执行失败的命令和错误信息，请分析并提供正确的命令。
 
 规则:
 1. 只返回修正后的命令，不要解释
 2. 如果命令涉及危险操作(删除文件、修改权限等)，在命令前加上 [DANGER] 标签
 3. 优先使用安全的参数，如 --dry-run
-4. 保持命令的原始意图""")
+4. 保持命令的原始意图"""
+        
+        # 优先从 Markdown 配置获取
+        system_prompt = self.markdown_prompts.get_prompt('correction_system_prompt')
+        if not system_prompt:
+            # 回退到 INI 配置
+            system_prompt = self.config.get('prompts', 'correction_system_prompt', fallback=default_prompt)
 
         prompt = f"""失败的命令: {failed_command}
 错误信息: {error_output}
@@ -252,15 +268,21 @@ class CommandAIHelper:
         if cached:
             return cached
         
-        # 从配置文件读取自定义 prompt，如果没有则使用默认值
-        system_prompt = self.config.get('prompts', 'translation_system_prompt', fallback="""你是一个专业的命令行助手。将用户的自然语言描述转换为对应的 shell 命令。
+        # 优先从 Markdown 配置读取 prompt，然后回退到 INI 配置
+        default_prompt = """你是一个专业的命令行助手。将用户的自然语言描述转换为对应的 shell 命令。
 
 规则:
 1. 只返回命令，不要解释
 2. 如果命令涉及危险操作，在命令前加上 [DANGER] 标签
 3. 优先使用安全参数，如 --dry-run
 4. 使用常见的 Unix/Linux 命令
-5. 考虑跨平台兼容性""")
+5. 考虑跨平台兼容性"""
+        
+        # 优先从 Markdown 配置获取
+        system_prompt = self.markdown_prompts.get_prompt('translation_system_prompt')
+        if not system_prompt:
+            # 回退到 INI 配置
+            system_prompt = self.config.get('prompts', 'translation_system_prompt', fallback=default_prompt)
 
         prompt = f"""自然语言描述: {nl_query}
 当前上下文: {context}
@@ -276,8 +298,8 @@ class CommandAIHelper:
 
     def get_completions(self, current_input: str, context: str = "") -> List[Dict[str, str]]:
         """获取智能补全建议"""
-        # 从配置文件读取自定义 prompt，如果没有则使用默认值
-        system_prompt = self.config.get('prompts', 'completion_system_prompt', fallback="""你是一个命令行补全助手。根据用户当前的输入和上下文，提供相关的补全建议。
+        # 优先从 Markdown 配置读取 prompt，然后回退到 INI 配置
+        default_prompt = """你是一个命令行补全助手。根据用户当前的输入和上下文，提供相关的补全建议。
 
 返回格式为 JSON 数组，每个元素包含:
 - "completion": 补全内容
@@ -287,7 +309,13 @@ class CommandAIHelper:
 1. 最多返回 10 个建议
 2. 按相关性排序
 3. 包含参数、选项、文件名等
-4. 描述要简洁明了""")
+4. 描述要简洁明了"""
+        
+        # 优先从 Markdown 配置获取
+        system_prompt = self.markdown_prompts.get_prompt('completion_system_prompt')
+        if not system_prompt:
+            # 回退到 INI 配置
+            system_prompt = self.config.get('prompts', 'completion_system_prompt', fallback=default_prompt)
 
         prompt = f"""当前输入: {current_input}
 上下文: {context}

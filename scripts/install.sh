@@ -265,6 +265,14 @@ install_config_files() {
         fi
     fi
     
+    # 复制 Markdown 格式的自定义 prompt 配置文件
+    if [ -f "$SCRIPT_DIR/config/custom-prompts.md" ]; then
+        if [ ! -f "$CONFIG_DIR/custom-prompts.md" ]; then
+            cp "$SCRIPT_DIR/config/custom-prompts.md" "$CONFIG_DIR/custom-prompts.md"
+            print_success "已复制 Markdown 格式的自定义 prompt 配置文件"
+        fi
+    fi
+    
     # 创建黑名单文件
     if [ ! -f "$CONFIG_DIR/blacklist.txt" ]; then
         cat > "$CONFIG_DIR/blacklist.txt" << 'EOF'
@@ -420,7 +428,8 @@ show_post_install_info() {
     echo
     print_info "配置文件位置:"
     print_info "  配置: $CONFIG_DIR/config.ini"
-    print_info "  自定义 Prompt: $CONFIG_DIR/custom-prompt-example.ini"
+    print_info "  自定义 Prompt (INI): $CONFIG_DIR/custom-prompt-example.ini"
+    print_info "  自定义 Prompt (Markdown): $CONFIG_DIR/custom-prompts.md"
     print_info "  黑名单: $CONFIG_DIR/blacklist.txt"
     print_info "  缓存: $CACHE_DIR"
     
