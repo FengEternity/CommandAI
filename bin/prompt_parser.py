@@ -26,11 +26,12 @@ class MarkdownPromptParser:
             with open(self.config_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            # 解析三种主要的提示词类型
+            # 解析四种主要的提示词类型
             self.prompts = {
                 'correction_system_prompt': self._extract_correction_prompt(content),
                 'translation_system_prompt': self._extract_translation_prompt(content),
-                'completion_system_prompt': self._extract_completion_prompt(content)
+                'completion_system_prompt': self._extract_completion_prompt(content),
+                'explanation_system_prompt': self._extract_explanation_prompt(content)
             }
             
         except Exception as e:
@@ -84,6 +85,22 @@ class MarkdownPromptParser:
         
         return None
     
+    def _extract_explanation_prompt(self, content: str) -> Optional[str]:
+        """提取命令解释提示词"""
+        # 查找 "## 📖 命令解释提示词" 部分
+        pattern = r'## 📖 命令解释提示词.*?\*\*当前配置\*\*:\s*```([^`]+?)```'
+        match = re.search(pattern, content, re.DOTALL)
+        if match:
+            return match.group(1).strip()
+        
+        # 备用模式：查找任何包含 "命令解释" 的代码块
+        pattern = r'命令解释.*?```([^`]+?)```'
+        match = re.search(pattern, content, re.DOTALL)
+        if match:
+            return match.group(1).strip()
+        
+        return None
+    
     def get_prompt(self, prompt_type: str, fallback: str = "") -> str:
         """获取指定类型的提示词，如果不存在则返回 fallback"""
         return self.prompts.get(prompt_type, fallback)
@@ -97,7 +114,8 @@ class MarkdownPromptParser:
         return {
             'correction_system_prompt': self.has_prompt('correction_system_prompt'),
             'translation_system_prompt': self.has_prompt('translation_system_prompt'),
-            'completion_system_prompt': self.has_prompt('completion_system_prompt')
+            'completion_system_prompt': self.has_prompt('completion_system_prompt'),
+            'explanation_system_prompt': self.has_prompt('explanation_system_prompt')
         }
 
 
@@ -142,6 +160,22 @@ def test_parser():
 你是一个高级命令行补全引擎。
 请提供智能补全建议。
 返回 JSON 格式。
+```
+
+## 📖 命令解释提示词
+
+**当前配置**:
+
+```
+你是一个专业的命令行教学助手。请为用户详细解释命令的功能和用法。
+
+请按以下格式回复：
+1. 命令简介：简要说明命令的主要功能
+2. 参数解释：解释各个参数的作用
+3. 使用示例：提供常见的使用场景
+4. 注意事项：提醒使用时需要注意的地方
+
+请使用中文回复，内容要简洁明了，重点突出实用性。
 ```
 """
     

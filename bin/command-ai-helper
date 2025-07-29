@@ -330,6 +330,33 @@ class CommandAIHelper:
                 pass
         
         return []
+    
+    def explain_command(self, command: str, context: str = "") -> Optional[str]:
+        """解释命令的功能和用法"""
+        # 优先从 Markdown 配置读取 prompt，然后回退到 INI 配置
+        default_prompt = """你是一个专业的命令行教学助手。请为用户详细解释命令的功能和用法。
+
+请按以下格式回复：
+1. 命令简介：简要说明命令的主要功能
+2. 参数解释：解释各个参数的作用
+3. 使用示例：提供常见的使用场景
+4. 注意事项：提醒使用时需要注意的地方
+
+请使用中文回复，内容要简洁明了。"""
+        
+        # 优先从 Markdown 配置获取
+        system_prompt = self.markdown_prompts.get_prompt('explanation_system_prompt')
+        if not system_prompt:
+            # 回退到 INI 配置
+            system_prompt = self.config.get('prompts', 'explanation_system_prompt', fallback=default_prompt)
+        
+        prompt = f"""请解释以下命令：
+命令: {command}
+上下文: {context}
+
+请提供详细的解释:"""
+        
+        return self._call_ai_api(prompt, system_prompt)
 
     def clear_cache(self):
         """清空缓存"""
@@ -368,7 +395,7 @@ class CommandAIHelper:
 
 def main():
     parser = argparse.ArgumentParser(description='CommandAI Helper')
-    parser.add_argument('action', choices=['correct', 'translate', 'complete', 'feedback', 'cache'])
+    parser.add_argument('action', choices=['correct', 'translate', 'complete', 'explain', 'feedback', 'cache'])
     parser.add_argument('--query', help='查询内容')
     parser.add_argument('--command', help='命令内容')
     parser.add_argument('--error', help='错误信息')
@@ -392,6 +419,11 @@ def main():
     elif args.action == 'complete':
         results = helper.get_completions(args.query, args.context)
         print(json.dumps(results))
+    
+    elif args.action == 'explain':
+        result = helper.explain_command(args.query, args.context)
+        if result:
+            print(result)
     
     elif args.action == 'feedback':
         helper.update_feedback(args.query, args.command, args.feedback_type, args.context)

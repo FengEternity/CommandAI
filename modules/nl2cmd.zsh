@@ -184,65 +184,73 @@ command_ai_edit_generated_command() {
 command_ai_explain_command() {
     local cmd="$1"
     
-    print -P "%F{cyan}命令详细说明:%f"
-    print -P "%F{white}$cmd%f"
+    echo "命令详细说明:"
+    echo "$cmd"
     echo
     
-    # 分解命令组件
-    local components=("${(@s/ /)cmd}")
-    local main_cmd="${components[1]}"
+    # 调用 AI 获取详细解释（带重传机制）
+    local helper_script="$COMMAND_AI_PLUGIN_DIR/bin/command-ai-helper"
+    local context=$(command_ai_get_context)
+    local explanation
+    local max_retries=3
+    local retry_count=0
     
-    # 提供基本说明
-    case "$main_cmd" in
-        ls)
-            print -P "%F{yellow}ls: 列出目录内容%f"
-            ;;
-        find)
-            print -P "%F{yellow}find: 在目录树中搜索文件和目录%f"
-            ;;
-        grep)
-            print -P "%F{yellow}grep: 在文件中搜索文本模式%f"
-            ;;
-        awk)
-            print -P "%F{yellow}awk: 文本处理工具%f"
-            ;;
-        sed)
-            print -P "%F{yellow}sed: 流编辑器，用于过滤和转换文本%f"
-            ;;
-        curl)
-            print -P "%F{yellow}curl: 传输数据的命令行工具%f"
-            ;;
-        wget)
-            print -P "%F{yellow}wget: 从网络下载文件%f"
-            ;;
-        docker)
-            print -P "%F{yellow}docker: 容器管理工具%f"
-            ;;
-        git)
-            print -P "%F{yellow}git: 版本控制系统%f"
-            ;;
-        *)
-            print -P "%F{yellow}$main_cmd: 命令行工具%f"
-            ;;
-    esac
-    
-    # 分析参数
-    if [[ ${#components[@]} -gt 1 ]]; then
-        print -P "%F{cyan}参数分析:%f"
-        for ((i=2; i<=${#components[@]}; i++)); do
-            local arg="${components[$i]}"
-            if [[ "$arg" =~ ^--.* ]]; then
-                print -P "  %F{green}$arg%f: 长选项"
-            elif [[ "$arg" =~ ^-.* ]]; then
-                print -P "  %F{green}$arg%f: 短选项"
+    if [[ -x "$helper_script" ]]; then
+        while [[ $retry_count -lt $max_retries ]]; do
+            explanation=$(timeout 15s python3 "$helper_script" explain \
+                --query "$cmd" \
+                --context "$context" 2>/dev/null)
+            
+            local exit_code=$?
+            
+            if [[ $exit_code -eq 0 && -n "$explanation" ]]; then
+                # 成功获取解释
+                echo "$explanation"
+                break
+            elif [[ $exit_code -eq 124 ]]; then
+                # 超时处理
+                retry_count=$((retry_count + 1))
+                if [[ $retry_count -lt $max_retries ]]; then
+                    echo "CommandAI: AI 请求超时 (尝试 $retry_count/$max_retries)"
+                    echo -n "是否重试? (y/n): "
+                    read -k1 retry_choice
+                    echo
+                    if [[ "$retry_choice" != "y" && "$retry_choice" != "Y" ]]; then
+                        echo "CommandAI: 用户取消重试"
+                        break
+                    fi
+                    echo "CommandAI: 正在重试..."
+                else
+                    echo "CommandAI: AI 请求超时，已达到最大重试次数 ($max_retries)"
+                fi
+            elif [[ $exit_code -ne 0 ]]; then
+                # 其他错误
+                retry_count=$((retry_count + 1))
+                if [[ $retry_count -lt $max_retries ]]; then
+                    echo "CommandAI: 获取命令解释失败 (尝试 $retry_count/$max_retries)"
+                    echo -n "是否重试? (y/n): "
+                    read -k1 retry_choice
+                    echo
+                    if [[ "$retry_choice" != "y" && "$retry_choice" != "Y" ]]; then
+                        echo "CommandAI: 用户取消重试"
+                        break
+                    fi
+                    echo "CommandAI: 正在重试..."
+                else
+                    echo "CommandAI: 获取命令解释失败，已达到最大重试次数 ($max_retries)"
+                fi
             else
-                print -P "  %F{blue}$arg%f: 参数值"
+                # 空响应
+                echo "CommandAI: 未能获取命令解释"
+                break
             fi
         done
+    else
+        echo "CommandAI: 辅助脚本不可用"
     fi
     
     echo
-    print -P "%F{cyan}按任意键继续...%f"
+    echo "按任意键继续..."
     read -k1
 }
 
