@@ -40,7 +40,7 @@ command_ai_nl2cmd() {
         # 使用 timeout 命令防止卡死，最多等待 15 秒
         generated_cmd=$(timeout 15s python3 "$helper_script" translate \
             --query "$nl_query" \
-            --context "$context" 2>/dev/null)
+            --context "$context")
         
         # 检查是否超时
         if [[ $? -eq 124 ]]; then
@@ -303,7 +303,7 @@ command_ai_translate_nl_inline() {
         # 使用 timeout 命令防止卡死，最多等待 15 秒
         generated_cmd=$(timeout 15s python3 "$helper_script" translate \
             --query "$nl_query" \
-            --context "$context" 2>/dev/null)
+            --context "$context")
         
         # 检查是否超时
         if [[ $? -eq 124 ]]; then
