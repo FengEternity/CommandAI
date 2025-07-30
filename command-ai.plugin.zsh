@@ -105,6 +105,7 @@ CommandAI - 您的智能 Zsh 终端助手
 用法:
   ai <自然语言描述>     - 将自然语言转换为命令
   ai fix [命令]         - 修复上一个或指定的命令
+  ai fix --analyze|-a [数量] - 分析最近的历史命令及其执行结果
   ai feedback <good|bad> - 对 AI 建议提供反馈
   ai config            - 打开配置文件
   ai cache <clear|stats> - 管理缓存
@@ -117,6 +118,7 @@ CommandAI - 您的智能 Zsh 终端助手
 示例:
   ai 列出当前目录下的所有 .txt 文件
   ai fix
+  ai fix -a 5
   ai feedback good
   # 查找包含 "error" 的日志文件
 

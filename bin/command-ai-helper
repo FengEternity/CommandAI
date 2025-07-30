@@ -274,6 +274,42 @@ class CommandAIHelper:
         
         return corrected
 
+    def analyze_command_history(self, history_data: str, context: str = "") -> Optional[str]:
+        """分析历史命令及其执行结果"""
+        if not history_data:
+            return None
+        
+        # 优先从 Markdown 配置读取 prompt，然后回退到 INI 配置
+        default_prompt = """你是一个专业的命令行分析师。用户会提供一系列历史命令及其执行状态，请分析并提供改进建议。
+
+分析规则:
+1. 识别失败的命令和可能的原因
+2. 分析命令序列的上下文关系
+3. 提供具体的修复建议
+4. 如果可能，提供一个统一的解决方案
+5. 如果有建议执行的命令，以 '建议执行: 命令' 的格式输出
+
+输出格式:
+- 问题分析: ...
+- 修复建议: ...
+- 建议执行: 命令 (如果适用)"""
+        
+        # 优先从 Markdown 配置获取
+        system_prompt = self.markdown_prompts.get_prompt('analysis_system_prompt')
+        if not system_prompt:
+            # 回退到 INI 配置
+            system_prompt = self.config.get('prompts', 'analysis_system_prompt', fallback=default_prompt)
+
+        prompt = f"""历史命令数据:
+{history_data}
+
+当前上下文: {context}
+
+请分析上述命令序列并提供改进建议:"""
+
+        analysis = self._call_ai_api(prompt, system_prompt)
+        return analysis
+
     def _extract_command_from_response(self, response: str) -> str:
         """提取纯粹的命令部分"""
         if not response:
@@ -440,11 +476,12 @@ class CommandAIHelper:
 
 def main():
     parser = argparse.ArgumentParser(description='CommandAI Helper')
-    parser.add_argument('action', choices=['correct', 'translate', 'complete', 'explain', 'feedback', 'cache'])
+    parser.add_argument('action', choices=['correct', 'translate', 'complete', 'explain', 'feedback', 'cache', 'analyze'])
     parser.add_argument('--query', help='查询内容')
     parser.add_argument('--command', help='命令内容')
     parser.add_argument('--error', help='错误信息')
     parser.add_argument('--context', help='上下文信息', default='')
+    parser.add_argument('--history', help='历史命令数据')
     parser.add_argument('--feedback-type', choices=['good', 'bad'], help='反馈类型')
     parser.add_argument('--cache-action', choices=['clear', 'stats'], help='缓存操作')
     
@@ -473,6 +510,11 @@ def main():
     elif args.action == 'feedback':
         helper.update_feedback(args.query, args.command, args.feedback_type, args.context)
         print("反馈已记录")
+    
+    elif args.action == 'analyze':
+        result = helper.analyze_command_history(args.history, args.context)
+        if result:
+            print(result)
     
     elif args.action == 'cache':
         if args.cache_action == 'clear':

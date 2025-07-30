@@ -87,7 +87,15 @@ command_ai_auto_correct() {
 
 # 手动纠错命令
 command_ai_fix_command() {
-    local target_cmd="$1"
+    local first_arg="$1"
+    
+    # 检查是否使用 --analyze 或 -a 参数
+    if [[ "$first_arg" == "--analyze" || "$first_arg" == "-a" ]]; then
+        command_ai_analyze_history "${@:2}"
+        return $?
+    fi
+    
+    local target_cmd="$first_arg"
     
     # 如果没有指定命令，使用最后失败的命令
     if [[ -z "$target_cmd" ]]; then
@@ -228,6 +236,90 @@ command_ai_edit_command() {
     CURSOR=${#BUFFER}
     
     print -P "%F{cyan}命令已放入输入缓冲区，请编辑后按 Enter 执行。%f"
+}
+
+# 分析历史命令及其执行结果
+command_ai_analyze_history() {
+    local count="${1:-5}"  # 默认分析最近5个命令
+    
+    print -P "%F{cyan}CommandAI: 正在分析最近 $count 个命令及其执行结果...%f"
+    
+    # 获取历史命令和执行状态
+    local history_data=$(command_ai_get_command_history "$count")
+    
+    if [[ -z "$history_data" ]]; then
+        print -P "%F{red}CommandAI: 无法获取历史命令数据。%f"
+        return 1
+    fi
+    
+    local context=$(command_ai_get_context)
+    local helper_script="$COMMAND_AI_PLUGIN_DIR/bin/command-ai-helper"
+    local analysis_result
+    
+    if [[ -x "$helper_script" ]]; then
+        analysis_result=$(python3 "$helper_script" analyze \
+            --history "$history_data" \
+            --context "$context")
+    fi
+    
+    if [[ -n "$analysis_result" ]]; then
+        print -P "%F{green}分析结果:%f"
+        echo "$analysis_result"
+        
+        # 询问是否需要执行建议的修复命令
+        if [[ "$analysis_result" =~ "建议执行:" ]]; then
+            echo
+            print -P "%F{cyan}是否执行建议的修复命令? (y/n): %f"
+            read -k1 "choice"
+            echo
+            
+            if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
+                # 提取建议的命令并执行
+                local suggested_cmd=$(echo "$analysis_result" | grep "建议执行:" | sed 's/.*建议执行: *//')
+                if [[ -n "$suggested_cmd" ]]; then
+                    command_ai_execute_command "$suggested_cmd"
+                fi
+            fi
+        fi
+    else
+        print -P "%F{red}CommandAI: 无法获取分析结果，请检查配置。%f"
+        return 1
+    fi
+}
+
+# 获取命令历史及其执行状态
+command_ai_get_command_history() {
+    local count="$1"
+    local history_output=""
+    
+    # 获取最近的命令历史
+    local commands=()
+    local i=1
+    
+    while [[ $i -le $count ]]; do
+        local cmd=$(fc -ln -$i 2>/dev/null | sed 's/^[[:space:]]*//' | head -1)
+        if [[ -n "$cmd" && "$cmd" != "ai fix"* && "$cmd" != "command_ai_"* ]]; then
+            commands+=("$cmd")
+        fi
+        ((i++))
+    done
+    
+    # 构建历史数据格式
+    for ((i=1; i<=${#commands[@]}; i++)); do
+        local cmd="${commands[$i]}"
+        local cmd_status="unknown"
+        
+        # 尝试从历史记录中获取退出状态（简化版本）
+        if [[ "$cmd" =~ ^git ]]; then
+            if [[ "$cmd" =~ (commmit|oush|aad) ]]; then
+                cmd_status="failed"
+            fi
+        fi
+        
+        history_output+="Command $i: $cmd\nStatus: $cmd_status\n\n"
+    done
+    
+    echo "$history_output"
 }
 
 # 记录反馈
