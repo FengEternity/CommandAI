@@ -126,4 +126,4 @@ EOF
 }
 
 # 初始化消息
-echo "CommandAI 已加载！输入 'ai help' 查看使用说明。"
+# echo "CommandAI 已加载！输入 'ai help' 查看使用说明。"
