@@ -184,6 +184,56 @@ backup_existing_config() {
     fi
 }
 
+# macOS 兼容性处理
+apply_macos_compatibility() {
+    print_info "检查 macOS 兼容性..."
+    
+    # 检测操作系统
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        print_info "检测到 macOS 系统，应用兼容性修复"
+        
+        # 检查是否有 timeout 命令
+        if ! command -v timeout &> /dev/null; then
+            print_warning "macOS 下缺少 timeout 命令，正在应用兼容性修复"
+            
+            # 修复 nl2cmd.zsh 中的 timeout 调用
+            local nl2cmd_file="$INSTALL_DIR/modules/nl2cmd.zsh"
+            if [ -f "$nl2cmd_file" ]; then
+                # 备份原文件
+                cp "$nl2cmd_file" "$nl2cmd_file.backup"
+                
+                # 移除 timeout 命令，使用 Python 脚本的内置超时机制
+                sed -i '' 's/timeout 15s python3/python3/g' "$nl2cmd_file"
+                
+                # 移除错误重定向以便调试
+                sed -i '' 's/ 2>\/dev\/null//g' "$nl2cmd_file"
+                
+                print_success "已应用 macOS 兼容性修复"
+            else
+                print_warning "未找到 nl2cmd.zsh 文件，跳过兼容性修复"
+            fi
+        else
+            print_info "检测到 timeout 命令，无需兼容性修复"
+            
+            # 仍然移除错误重定向以便调试
+            local nl2cmd_file="$INSTALL_DIR/modules/nl2cmd.zsh"
+            if [ -f "$nl2cmd_file" ]; then
+                sed -i '' 's/ 2>\/dev\/null//g' "$nl2cmd_file"
+                print_success "已移除错误重定向以便调试"
+            fi
+        fi
+    else
+        print_info "检测到非 macOS 系统，跳过 macOS 兼容性处理"
+        
+        # 在非 macOS 系统上也移除错误重定向以便调试
+        local nl2cmd_file="$INSTALL_DIR/modules/nl2cmd.zsh"
+        if [ -f "$nl2cmd_file" ]; then
+            sed -i 's/ 2>\/dev\/null//g' "$nl2cmd_file"
+            print_success "已移除错误重定向以便调试"
+        fi
+    fi
+}
+
 # 安装插件文件
 install_plugin_files() {
     print_info "安装插件文件..."
@@ -230,6 +280,9 @@ install_plugin_files() {
         print_error "找不到补全目录"
         exit 1
     fi
+    
+    # macOS 兼容性处理
+    apply_macos_compatibility
     
     print_success "插件文件安装完成"
 }
