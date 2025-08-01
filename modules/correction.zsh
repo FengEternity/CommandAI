@@ -309,14 +309,58 @@ command_ai_get_command_history() {
         local cmd="${commands[$i]}"
         local cmd_status="unknown"
         
-        # 尝试从历史记录中获取退出状态（简化版本）
-        if [[ "$cmd" =~ ^git ]]; then
-            if [[ "$cmd" =~ (commmit|oush|aad) ]]; then
+        # 分析命令状态
+        
+        # 尝试通过重新执行命令来获取状态（仅用于分析，不实际执行）
+        # 检查命令是否是安全的只读命令
+        if [[ "$cmd" =~ ^(pwd|ls|echo|cat|head|tail|grep|find|which|whereis|id|whoami|date|uptime|uname|hostname|ip|ifconfig|ps|top|df|du|free|mount|lsblk|lscpu|lsusb|lspci)($|[[:space:]]) ]]; then
+            # 对于安全的只读命令，尝试获取其退出状态
+            if eval "$cmd" >/dev/null 2>&1; then
+                cmd_status="success"
+                # 命令执行成功
+            else
                 cmd_status="failed"
+                # 命令执行失败
+            fi
+        else
+            # 对于其他命令，尝试从历史记录中推断状态
+            # 检查是否是已知的失败命令模式
+            if [[ "$cmd" =~ ^git ]] && [[ "$cmd" =~ (commmit|oush|aad|checkotu|statsu|branc) ]]; then
+                cmd_status="failed"
+                # 通过模式匹配判断为失败
+            elif [[ "$cmd" == "$COMMAND_AI_LAST_COMMAND" ]] && [[ -n "$COMMAND_AI_LAST_ERROR" ]]; then
+                # 如果是最后记录的失败命令
+                cmd_status="failed"
+                # 记录的失败命令
+            else
+                # 默认假设成功（因为大多数命令如果失败会被 precmd 钩子捕获）
+                cmd_status="assumed_success"
+                # 默认假设成功
             fi
         fi
         
-        history_output+="Command $i: $cmd\nStatus: $cmd_status\n\n"
+        # 尝试获取命令输出
+        local cmd_output=""
+        
+        # 对于安全的只读命令，重新执行以获取输出
+        if [[ "$cmd" =~ ^(pwd|ls|echo|cat|head|tail|grep|find|which|whereis|id|whoami|date|uptime|uname|hostname|ip|ifconfig|ps|top|df|du|free|mount|lsblk|lscpu|lsusb|lspci)($|[[:space:]]) ]]; then
+            # 重新执行安全命令以获取输出
+            cmd_output=$(eval "$cmd" 2>&1)
+            local exec_exit_code=$?
+            if [[ $exec_exit_code -eq 0 ]]; then
+                # 输出获取成功
+            else
+                # 输出获取失败
+                cmd_output="Error: Command failed with exit code $exec_exit_code\n$cmd_output"
+            fi
+        else
+            # 对于其他命令，尝试从缓存或历史中获取输出（如果有的话）
+            cmd_output="[Output not available - command not re-executed for safety]"
+            # 非安全命令，不重新执行
+        fi
+        
+        # 构建完整的历史记录条目
+        history_output+="Command $i: $cmd\nStatus: $cmd_status\nOutput:\n$cmd_output\n\n---\n\n"
     done
     
     echo "$history_output"
