@@ -126,10 +126,16 @@ class CommandAIHelper:
                 messages.append({"role": "system", "content": system_prompt})
             messages.append({"role": "user", "content": prompt})
             
+            # 从配置文件获取温度参数，去除可能的注释
+            temp_str = self.config.get('advanced', 'temperature', fallback='0.6')
+            # 去除注释部分（# 后面的内容）
+            temp_str = temp_str.split('#')[0].strip()
+            temperature = float(temp_str)
+            
             data = {
                 'model': model,
                 'messages': messages,
-                'temperature': 0.1,
+                'temperature': temperature,
                 'max_tokens': 500
             }
             
